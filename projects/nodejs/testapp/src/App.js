@@ -10,7 +10,7 @@ function App() {
           Edit <code>src/App.js</code> and save to reload.
         </p>
         <p>
-          This is demo project for Kubernetes learning.
+          This is Kubernetes demo project v3.
         </p>
         <a
           className="App-link"

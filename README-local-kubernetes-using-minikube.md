@@ -129,8 +129,20 @@ kubectl logs -l app=my-web-app
 # Update image
 
 ```bash
-kubectl set image deployment my-web-app image=imajaydwivedi:webapp-demo:v3.0
+# build & push image
+cd /stale-storage/GitHub/Kubernetes-Learning/projects/nodejs/testapp
+docker build -t imajaydwivedi/webapp-demo:v3.0 .
+docker push imajaydwivedi/webapp-demo:v3.0
 
+# update image for a pod container
+kubectl get deployments
+kubectl set image deployment <deployment_name> <container_name> image=<image:version_tag>
+kubectl set image deployment my-web-app webapp-demo=imajaydwivedi/webapp-demo:v4.0
+
+# create a buggy rollout & roll it back afterwards
+kubectl set image deployment my-web-app webapp-demo=imajaydwivedi/webapp-demo:v10.0
+kubectl rollout status deployment my-web-app
+kubectl rollout undo deployment my-web-app
 ```
 
 # Cleanup
