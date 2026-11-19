@@ -96,3 +96,11 @@ sudo sysctl -p
 
 ```
 
+# /exit to crash the server
+
+```bash
+
+```
+
+
+

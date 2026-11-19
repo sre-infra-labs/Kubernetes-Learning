@@ -145,6 +145,60 @@ kubectl rollout status deployment my-web-app
 kubectl rollout undo deployment my-web-app
 ```
 
+# Scaling of App
+
+```bash
+# create 4 instances
+kubectl scale deployment my-web-app --replicas=4
+
+# crash app
+http://192.168.49.2:32106/exit
+
+# get pods
+|---------- $ kubectl get pods
+  NAME                          READY   STATUS    RESTARTS      AGE
+  my-web-app-6d4b9466f7-qjl8f   1/1     Running   3 (31s ago)   38m
+  my-web-app-6d4b9466f7-ql8qg   1/1     Running   0             93s
+  my-web-app-6d4b9466f7-s9gn8   1/1     Running   2 (26s ago)   93s
+  my-web-app-6d4b9466f7-xl9wj   1/1     Running   1 (50s ago)   93s
+
+```
+
+# YAML based deployment - https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#creating-a-deployment
+
+```bash
+# run deployment from a file
+|---------- $ kubectl apply -f Kubernetes-Learning/projects/nodejs/testapp-deployment.yml
+  deployment.apps/my-web-app created
+```
+
+# YAML based service - https://kubernetes.io/docs/concepts/services-networking/service/#defining-a-service
+
+```bash
+|---------- $ kubectl apply -f projects/nodejs/testapp-service.yml
+  service/my-web-app created
+
+|---------- $ kubectl get service
+  NAME         TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)        AGE
+  kubernetes   ClusterIP      10.96.0.1       <none>        443/TCP        2d9h
+  my-web-app   LoadBalancer   10.98.251.122   <pending>     80:30277/TCP   105s
+
+|---------- $ minikube service my-web-app
+  ┌───────────┬────────────┬─────────────┬───────────────────────────┐
+  │ NAMESPACE │    NAME    │ TARGET PORT │            URL            │
+  ├───────────┼────────────┼─────────────┼───────────────────────────┤
+  │ default   │ my-web-app │ 80          │ http://192.168.49.2:30277 │
+  └───────────┴────────────┴─────────────┴───────────────────────────┘
+  🎉  Opening service default/my-web-app in default browser...
+  Opening in existing browser session.
+
+```
+
+# To run application with multiple containers
+
+- Run multiple containers in same pod
+- Run each container in separate pod
+
 # Cleanup
 
 ```bash
@@ -161,5 +215,38 @@ kubectl rollout undo deployment my-web-app
 |---------- $ kubectl delete service my-nginx
   service "my-nginx" deleted from default namespace
 
+|---------- $ kubectl get pods
+  NAME                          READY   STATUS             RESTARTS       AGE
+  my-web-app-775c77c4f4-292cr   0/1     Error              5 (2m1s ago)   87m
+  my-web-app-775c77c4f4-96rbh   1/1     Running            0              61s
+  my-web-app-775c77c4f4-dbgpm   0/1     CrashLoopBackOff   5 (2m2s ago)   87m
+  my-web-app-775c77c4f4-wbkjj   1/1     Running            2 (14s ago)    61s
 
+kubectl describe pod -l app=my-web-app
+kubectl logs -l app=my-web-app
+
+#Find the not-ready pods:
+kubectl get pods -l app=web-app
+
+#See why the pod is not ready. Check the State, Last State, Reason, and Exit Code fields, plus the Events section at the bottom.
+kubectl describe pod <pod>
+
+#Logs from the crashed run (the one that matters for CrashLoopBackOff):
+kubectl logs <pod> --previous
+
+#Logs from the current run (if it's still starting):
+kubectl logs <pod>
+
+#Limit the output to recent lines:
+kubectl logs <pod> --previous --tail=50
+
+#Stream logs live while the pod restarts:
+kubectl logs <pod> -f
+
+#Exit code and reason of the last crash:
+kubectl get pod <pod> -o jsonpath='{.status.containerStatuses[0].lastState.terminated}'
+
+#Logs from every web-app pod at once:
+kubectl logs -l app=web-app --all-containers --prefix --tail=20
 ```
+
