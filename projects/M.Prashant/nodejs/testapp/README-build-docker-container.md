@@ -75,7 +75,7 @@ This section has moved here: [https://facebook.github.io/create-react-app/docs/t
 - max_user_watches limit has been increated using below command
 
 ```bash
-cd ./projects/nodejs/testapp
+cd ./projects/M.Prashant/nodejs/testapp
 
 # For local testing, change port using .env file if required. NOT required for container
 cat <<'EOF' > .env

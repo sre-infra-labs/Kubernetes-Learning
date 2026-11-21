@@ -9,6 +9,123 @@ https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/#install-using-nati
 ## Step 2 - Install minikube
 https://minikube.sigs.k8s.io/docs/start/?arch=%2Flinux%2Fx86-64%2Fstable%2Fdebian+package
 
+### Step 2a - Create host folder to mount into minikube (first-time setup)
+
+The host folder `/vm-storage-02/kubernetes-disk` on ryzen9 is mounted into the minikube node as `/hypervisor_disk`. Use it as a hostPath source for persistent volumes.
+
+Create the host folder (only if it doesn't exist yet):
+
+```bash
+sudo mkdir -p /vm-storage-02/kubernetes-disk
+sudo chown saanvi:saanvi /vm-storage-02/kubernetes-disk
+```
+
+The mount is set when the minikube container is **created**, so it must be passed on the first `minikube start`. Use the flags below for a fresh setup:
+
+```bash
+minikube delete
+minikube start --driver=docker --mount --mount-string="/vm-storage-02/kubernetes-disk:/hypervisor_disk"
+```
+
+Verify the mount inside minikube:
+
+```bash
+minikube ssh -- ls -la /hypervisor_disk
+# Check the bind mount is registered on the minikube container
+docker inspect minikube --format '{{range .Mounts}}{{.Source}} -> {{.Destination}}{{"\n"}}{{end}}' | grep hypervisor_disk
+```
+
+Test write-through from host to minikube:
+
+```bash
+touch /vm-storage-02/kubernetes-disk/hello-from-host
+minikube ssh -- ls /hypervisor_disk
+```
+
+> The mount persists across `minikube stop` / `minikube start`, because the minikube container keeps its configuration. If you run `minikube delete`, repeat the `minikube start --mount ...` command above.
+
+### Step 2b - systemd service for minikube & dashboard on port 8001
+
+This runs minikube and the dashboard as **system** services, so they start at boot without anyone logging in. They run as the `saanvi` user, not root: minikube's docker driver refuses to run as root without `--force`, and `saanvi` already has access to Docker through the `docker` group.
+
+The services set `MINIKUBE_HOME` and `KUBECONFIG` to the `saanvi` user's profile and kubeconfig. This keeps the existing cluster and lets `kubectl` work as `saanvi` too.
+
+Complete the first-time `minikube start` with the mount flags from Step 2a before enabling these services, because the services only run `minikube start` for an existing cluster.
+
+`/etc/systemd/system/minikube.service`:
+
+```ini
+[Unit]
+Description=Minikube Kubernetes cluster
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=saanvi
+Environment=HOME=/home/saanvi
+Environment=MINIKUBE_HOME=/home/saanvi/.minikube
+Environment=KUBECONFIG=/home/saanvi/.kube/config
+ExecStart=/usr/bin/minikube start
+ExecStop=/usr/bin/minikube stop
+TimeoutStartSec=600
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/systemd/system/minikube-dashboard.service`:
+
+```ini
+[Unit]
+Description=Minikube dashboard on port 8001
+After=minikube.service
+Requires=minikube.service
+
+[Service]
+User=saanvi
+Environment=HOME=/home/saanvi
+Environment=MINIKUBE_HOME=/home/saanvi/.minikube
+Environment=KUBECONFIG=/home/saanvi/.kube/config
+# --url prints the URL and does not try to open a browser
+ExecStart=/usr/bin/minikube dashboard --port=8001 --url
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Install and start them (create the two files above with `sudo`, then):
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now minikube.service minikube-dashboard.service
+sudo systemctl status minikube.service minikube-dashboard.service
+```
+
+Open the dashboard at `http://localhost:8001/api/v1/namespaces/kubernetes-dashboard/services/http:kubernetes-dashboard:/proxy/`.
+
+If you created the earlier user-level units, remove them so they don't conflict:
+
+```bash
+systemctl --user disable --now minikube.service minikube-dashboard.service
+rm -f ~/.config/systemd/user/minikube.service ~/.config/systemd/user/minikube-dashboard.service
+```
+
+Useful commands:
+
+```bash
+sudo journalctl -u minikube-dashboard -f            # dashboard logs
+sudo systemctl restart minikube-dashboard           # restart only the dashboard
+sudo systemctl stop minikube-dashboard minikube     # stop everything (stops the cluster)
+```
+
+Stopping `minikube.service` runs `minikube stop`. The cluster and the host mount are kept, as described in Step 2a.
+
+### Step 2c - Start minikube
+
 ```
 |---------- $ minikube start
   😄  minikube v1.39.0 on Ubuntu 26.04
@@ -130,7 +247,7 @@ kubectl logs -l app=my-web-app
 
 ```bash
 # build & push image
-cd /stale-storage/GitHub/Kubernetes-Learning/projects/nodejs/testapp
+cd /stale-storage/GitHub/Kubernetes-Learning/projects/M.Prashant/nodejs/testapp
 docker build -t imajaydwivedi/webapp-demo:v3.0 .
 docker push imajaydwivedi/webapp-demo:v3.0
 
@@ -168,14 +285,14 @@ http://192.168.49.2:32106/exit
 
 ```bash
 # run deployment from a file
-|---------- $ kubectl apply -f Kubernetes-Learning/projects/nodejs/testapp-deployment.yml
+|---------- $ kubectl apply -f Kubernetes-Learning/projects/M.Prashant/nodejs/testapp-deployment.yml
   deployment.apps/my-web-app created
 ```
 
 # YAML based service - https://kubernetes.io/docs/concepts/services-networking/service/#defining-a-service
 
 ```bash
-|---------- $ kubectl apply -f projects/nodejs/testapp-service.yml
+|---------- $ kubectl apply -f projects/M.Prashant/nodejs/testapp-service.yml
   service/my-web-app created
 
 |---------- $ kubectl get service
@@ -197,7 +314,35 @@ http://192.168.49.2:32106/exit
 # To run application with multiple containers
 
 - Run multiple containers in same pod
+  - This can lead to multiple db containers running and accepting db requests (split brain)
 - Run each container in separate pod
+
+```bash
+# same-pod-deployment
+kubectl apply -f projects/M.Prashant/multi-container-app/db-demo-app---same-pod-deployment.yml
+minikube service my-nodedb-app
+
+# multi-pod-deployment
+cd /stale-storage/GitHub/Kubernetes-Learning/projects/M.Prashant/multi-container-app/db-demo-app---multi-pod-deployment
+
+grep -n "mongoose.connect" index.js    # should show a backtick URL using MONGO_HOST
+docker build -t imajaydwivedi/node-mongo-db:05 .
+docker push imajaydwivedi/node-mongo-db:05
+
+
+cd /stale-storage/GitHub/Kubernetes-Learning/
+
+kubectl apply -f projects/M.Prashant/multi-container-app/db-demo-app---host-pv---multi-pod-deployment.yml
+kubectl apply -f projects/M.Prashant/multi-container-app/db-demo-app---mongodb---multi-pod-deployment.yml
+kubectl apply -f projects/M.Prashant/multi-container-app/db-demo-app---config-map---multi-pod-deployment.yml
+kubectl apply -f projects/M.Prashant/multi-container-app/db-demo-app---node-app---multi-pod-deployment.yml
+
+kubectl logs -l app=node-app -f
+kubectl get all
+kubectl get persistentvolume
+kubectl get persistentvolumeclaims
+minikube service service-node-app
+```
 
 # Cleanup
 
@@ -249,4 +394,21 @@ kubectl get pod <pod> -o jsonpath='{.status.containerStatuses[0].lastState.termi
 #Logs from every web-app pod at once:
 kubectl logs -l app=web-app --all-containers --prefix --tail=20
 ```
+
+# Simulate kill/crash of containers
+
+```bash
+#Delete the pod (Deployment recreates it):
+kubectl get pods -l app=mongo-app
+kubectl delete pod -l app=mongo-app
+kubectl get pods -l app=mongo-app -w
+
+#Kill the mongod process inside the running container (kubelet restarts it in the same pod, RESTARTS goes up):
+POD=$(kubectl get pod -l app=mongo-app -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -it $POD -c mongo-app -- bash -c 'kill -9 $(pgrep mongod)'
+kubectl get pods -l app=mongo-app -w
+
+#If pgrep isn't in the image, use kubectl exec -it $POD -c mongo-app -- bash -c 'kill -9 $(ps -eo pid,comm | awk "/mongod/{print \$1}")', or check the process with kubectl exec -it $POD -c mongo-app -- ps aux.
+```
+
 

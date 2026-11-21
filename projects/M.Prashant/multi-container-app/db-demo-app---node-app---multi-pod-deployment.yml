@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  # Unique name for the deployment
+  name: node-app
+spec:
+  # 3 Pods should exist at any given time
+  replicas: 3
+  selector:
+    matchLabels:
+      app: node-app
+  template:
+    metadata:
+      labels:
+        # Apply this label to pods and default the Deployment label selector to this value
+        app: node-app
+    spec:
+      containers:
+      - name: node-app
+        image: imajaydwivedi/node-mongo-db:05
+        env:
+          - name: MONGO_HOST
+            valueFrom:
+              configMapKeyRef:
+                name: mongo-config
+                key: MONGO_HOST
+          - name: MONGO_PORT
+            valueFrom:
+              configMapKeyRef:
+                name: mongo-config
+                key: MONGO_PORT
+        # ports:
+        # - containerPort: 3000
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: service-node-app
+spec:
+  selector:
+    # Loadbalance traffic across Pods matching this label selector
+    app: node-app
+  type: LoadBalancer
+  ports:
+    # Accept traffic sent to port 80
+    - name: http
+      # protocol: TCP
+      port: 80
+      targetPort: 3000
+

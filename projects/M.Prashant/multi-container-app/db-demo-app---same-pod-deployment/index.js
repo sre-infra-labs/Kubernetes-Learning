@@ -5,8 +5,11 @@ const bodyParser = require('body-parser');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Connect to MongoDB
-mongoose.connect('mongodb://mongo:27017/yourDatabaseName', {
+// Connect to MongoDB.
+// In a Kubernetes multi-container Pod, containers share localhost, so the mongodb
+// sidecar is reached at localhost. Set MONGO_URL to override (e.g. "mongodb://mongo:27017/..." in Docker).
+const MONGO_URL = process.env.MONGO_URL || 'mongodb://localhost:27017/yourDatabaseName';
+mongoose.connect(MONGO_URL, {
     useNewUrlParser: true,
     useUnifiedTopology: true,
 });
